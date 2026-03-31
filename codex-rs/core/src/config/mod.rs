@@ -743,9 +743,23 @@ pub async fn load_config_as_toml_with_cli_overrides(
     cwd: &AbsolutePathBuf,
     cli_overrides: Vec<(String, TomlValue)>,
 ) -> std::io::Result<ConfigToml> {
+    load_config_as_toml_with_cli_overrides_optional_cwd(
+        codex_home,
+        Some(cwd.to_path_buf()),
+        cli_overrides,
+    )
+    .await
+}
+
+pub async fn load_config_as_toml_with_cli_overrides_optional_cwd(
+    codex_home: &Path,
+    cwd: Option<PathBuf>,
+    cli_overrides: Vec<(String, TomlValue)>,
+) -> std::io::Result<ConfigToml> {
+    let cwd = cwd.map(AbsolutePathBuf::from_absolute_path).transpose()?;
     let config_layer_stack = load_config_layers_state(
         codex_home,
-        Some(cwd.clone()),
+        cwd,
         &cli_overrides,
         LoaderOverrides::default(),
         CloudRequirementsLoader::default(),
@@ -794,6 +808,13 @@ fn load_catalog_json(path: &AbsolutePathBuf) -> std::io::Result<ModelsResponse> 
         ));
     }
     Ok(catalog)
+}
+
+pub fn feedback_enabled_from_config_toml(cfg: &ConfigToml) -> bool {
+    cfg.feedback
+        .as_ref()
+        .and_then(|feedback| feedback.enabled)
+        .unwrap_or(true)
 }
 
 fn load_model_catalog(
@@ -1983,6 +2004,7 @@ impl Config {
     ) -> std::io::Result<Self> {
         validate_model_providers(&cfg.model_providers)
             .map_err(|message| std::io::Error::new(std::io::ErrorKind::InvalidInput, message))?;
+        let feedback_enabled = feedback_enabled_from_config_toml(&cfg);
         // Ensure that every field of ConfigRequirements is applied to the final
         // Config.
         let ConfigRequirements {
@@ -2685,11 +2707,7 @@ impl Config {
                 .as_ref()
                 .and_then(|a| a.enabled)
                 .or(cfg.analytics.as_ref().and_then(|a| a.enabled)),
-            feedback_enabled: cfg
-                .feedback
-                .as_ref()
-                .and_then(|feedback| feedback.enabled)
-                .unwrap_or(true),
+            feedback_enabled,
             tool_suggest,
             tui_notifications: cfg
                 .tui

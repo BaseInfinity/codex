@@ -8,6 +8,8 @@ use std::sync::Arc;
 use codex_arg0::Arg0DispatchPaths;
 use codex_core::config::Config;
 use codex_exec_server::EnvironmentManager;
+use codex_feedback::AuthFailureEventQueueFlushGuard;
+use codex_feedback::enqueue_auth_failure_event_tags;
 use codex_utils_cli::CliConfigOverrides;
 
 use rmcp::model::ClientNotification;
@@ -71,6 +73,15 @@ pub async fn run_main(
         .map_err(|e| {
             std::io::Error::new(ErrorKind::InvalidData, format!("error loading config: {e}"))
         })?;
+    let feedback_enabled = config.feedback_enabled;
+    let _auth_failure_reporter_guard = feedback_enabled.then(|| {
+        codex_core::auth::set_auth_failure_reporter(Arc::new(enqueue_auth_failure_event_tags))
+    });
+    let _auth_failure_flush_guard = feedback_enabled.then(|| {
+        AuthFailureEventQueueFlushGuard::new(
+            codex_feedback::auth_failure_event_queue_flush_timeout(),
+        )
+    });
 
     let otel = codex_core::otel_init::build_provider(
         &config,

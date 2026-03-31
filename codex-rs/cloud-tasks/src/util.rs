@@ -6,6 +6,22 @@ use reqwest::header::HeaderMap;
 
 use codex_core::config::Config;
 use codex_login::AuthManager;
+use codex_utils_cli::CliConfigOverrides;
+use std::path::PathBuf;
+use std::sync::OnceLock;
+use tokio::sync::OnceCell;
+
+struct CloudAuthConfig {
+    codex_home: PathBuf,
+    auth_credentials_store_mode: codex_core::auth::AuthCredentialsStoreMode,
+}
+
+static CLOUD_TASKS_CLI_OVERRIDES: OnceLock<CliConfigOverrides> = OnceLock::new();
+static CLOUD_AUTH_CONFIG: OnceCell<Option<CloudAuthConfig>> = OnceCell::const_new();
+
+pub fn set_cli_overrides(cli_overrides: CliConfigOverrides) {
+    let _ = CLOUD_TASKS_CLI_OVERRIDES.set(cli_overrides);
+}
 
 pub fn set_user_agent_suffix(suffix: &str) {
     if let Ok(mut guard) = codex_core::default_client::USER_AGENT_SUFFIX.lock() {
@@ -59,13 +75,30 @@ pub fn extract_chatgpt_account_id(token: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+async fn load_cloud_auth_config() -> Option<&'static CloudAuthConfig> {
+    CLOUD_AUTH_CONFIG
+        .get_or_init(|| async {
+            let cli_overrides = CLOUD_TASKS_CLI_OVERRIDES
+                .get()
+                .map(CliConfigOverrides::parse_overrides)
+                .transpose()
+                .ok()??;
+            let config = Config::load_with_cli_overrides(cli_overrides).await.ok()?;
+            Some(CloudAuthConfig {
+                codex_home: config.codex_home,
+                auth_credentials_store_mode: config.cli_auth_credentials_store_mode,
+            })
+        })
+        .await
+        .as_ref()
+}
+
 pub async fn load_auth_manager() -> Option<AuthManager> {
-    // TODO: pass in cli overrides once cloud tasks properly support them.
-    let config = Config::load_with_cli_overrides(Vec::new()).await.ok()?;
+    let config = load_cloud_auth_config().await?;
     Some(AuthManager::new(
-        config.codex_home,
+        config.codex_home.clone(),
         /*enable_codex_api_key_env*/ false,
-        config.cli_auth_credentials_store_mode,
+        config.auth_credentials_store_mode,
     ))
 }
 
