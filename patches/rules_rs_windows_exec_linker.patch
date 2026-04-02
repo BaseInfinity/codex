@@ -15,12 +15,24 @@ index 67e491c..3f1cff5 100644
              rust_std = select(rust_std_select),
              rustc = "{}rustc".format(rustc_repo_label),
              cargo = "{}cargo".format(cargo_repo_label),
-@@ -82,7 +84,8 @@ def declare_rustc_toolchains(
+@@ -82,7 +84,20 @@ def declare_rustc_toolchains(
              stdlib_linkflags = select({
                  "@platforms//os:freebsd": ["-lexecinfo", "-lpthread"],
                  "@platforms//os:macos": ["-lSystem", "-lresolv"],
 -                # TODO: windows
-+                "@platforms//os:windows": ["advapi32.lib", "ws2_32.lib", "userenv.lib", "Bcrypt.lib"],
++                "@rules_rs//rs/experimental/platforms/constraints:windows_gnullvm": [
++                    "advapi32.lib",
++                    "ws2_32.lib",
++                    "userenv.lib",
++                    "Bcrypt.lib",
++                ],
++                "@rules_rs//rs/experimental/platforms/constraints:windows_msvc": [
++                    "advapi32.lib",
++                    "ws2_32.lib",
++                    "userenv.lib",
++                    "Bcrypt.lib",
++                    "ucrt.lib",
++                ],
 +                # TODO: other platforms
                  "//conditions:default": [],
              }),
