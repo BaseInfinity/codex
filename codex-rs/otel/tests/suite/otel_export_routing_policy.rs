@@ -14,8 +14,6 @@ use pretty_assertions::assert_eq;
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::sync::Mutex;
-use std::sync::MutexGuard;
 use tracing_subscriber::Layer;
 use tracing_subscriber::filter::filter_fn;
 use tracing_subscriber::layer::SubscriberExt;
@@ -93,17 +91,8 @@ fn auth_env_metadata() -> AuthEnvTelemetryMetadata {
     }
 }
 
-fn lock_callsite_interest_cache() -> MutexGuard<'static, ()> {
-    static CALLSITE_INTEREST_CACHE_LOCK: Mutex<()> = Mutex::new(());
-
-    CALLSITE_INTEREST_CACHE_LOCK
-        .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-}
-
 #[test]
 fn otel_export_routing_policy_routes_user_prompt_log_and_trace_events() {
-    let _guard = lock_callsite_interest_cache();
     let log_exporter = InMemoryLogExporter::default();
     let logger_provider = SdkLoggerProvider::builder()
         .with_simple_exporter(log_exporter.clone())
@@ -213,7 +202,6 @@ fn otel_export_routing_policy_routes_user_prompt_log_and_trace_events() {
 
 #[test]
 fn otel_export_routing_policy_routes_tool_result_log_and_trace_events() {
-    let _guard = lock_callsite_interest_cache();
     let log_exporter = InMemoryLogExporter::default();
     let logger_provider = SdkLoggerProvider::builder()
         .with_simple_exporter(log_exporter.clone())
@@ -327,7 +315,6 @@ fn otel_export_routing_policy_routes_tool_result_log_and_trace_events() {
 
 #[test]
 fn otel_export_routing_policy_routes_auth_recovery_log_and_trace_events() {
-    let _guard = lock_callsite_interest_cache();
     let log_exporter = InMemoryLogExporter::default();
     let logger_provider = SdkLoggerProvider::builder()
         .with_simple_exporter(log_exporter.clone())
@@ -474,7 +461,6 @@ fn otel_export_routing_policy_routes_auth_recovery_log_and_trace_events() {
 
 #[test]
 fn otel_export_routing_policy_routes_api_request_auth_observability() {
-    let _guard = lock_callsite_interest_cache();
     let log_exporter = InMemoryLogExporter::default();
     let logger_provider = SdkLoggerProvider::builder()
         .with_simple_exporter(log_exporter.clone())
@@ -660,7 +646,6 @@ fn otel_export_routing_policy_routes_api_request_auth_observability() {
 
 #[test]
 fn otel_export_routing_policy_routes_websocket_connect_auth_observability() {
-    let _guard = lock_callsite_interest_cache();
     let log_exporter = InMemoryLogExporter::default();
     let logger_provider = SdkLoggerProvider::builder()
         .with_simple_exporter(log_exporter.clone())
@@ -778,7 +763,6 @@ fn otel_export_routing_policy_routes_websocket_connect_auth_observability() {
 
 #[test]
 fn otel_export_routing_policy_routes_websocket_request_transport_observability() {
-    let _guard = lock_callsite_interest_cache();
     let log_exporter = InMemoryLogExporter::default();
     let logger_provider = SdkLoggerProvider::builder()
         .with_simple_exporter(log_exporter.clone())
