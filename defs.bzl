@@ -13,14 +13,20 @@ PLATFORMS = [
     "windows_arm64",
 ]
 
-# The Bazel-built windows-gnullvm binaries that pull in V8 need a larger PE
-# stack reserve than the default linker setting. Thread the flag through the
-# executable and test entry points so the final linked artifacts behave the same
-# in normal builds and under `bazel test`.
-WINDOWS_GNULLVM_RUSTC_STACK_FLAGS = select({
+# Match Cargo's Windows linker behavior so Bazel-built binaries and tests use
+# the same stack reserve on both Windows ABIs and resolve UCRT imports on MSVC.
+WINDOWS_RUSTC_LINK_FLAGS = select({
     "@rules_rs//rs/experimental/platforms/constraints:windows_gnullvm": [
         "-C",
         "link-arg=-Wl,--stack,8388608",
+    ],
+    "@rules_rs//rs/experimental/platforms/constraints:windows_msvc": [
+        "-C",
+        "link-arg=/STACK:8388608",
+        "-C",
+        "link-arg=/NODEFAULTLIB:libucrt.lib",
+        "-C",
+        "link-arg=ucrt.lib",
     ],
     "//conditions:default": [],
 })
@@ -119,6 +125,8 @@ def codex_rust_crate(
         rustc_env = {},
         deps_extra = [],
         integration_compile_data_extra = [],
+        integration_test_args = [],
+        integration_test_timeout = None,
         test_data_extra = [],
         test_tags = [],
         extra_binaries = []):
@@ -149,6 +157,9 @@ def codex_rust_crate(
         deps_extra: Extra normal deps beyond @crates resolution.
             Typically only needed when features add additional deps.
         integration_compile_data_extra: Extra compile_data for integration tests.
+        integration_test_args: Optional args for integration test binaries.
+        integration_test_timeout: Optional Bazel timeout for integration test
+            targets generated from `tests/*.rs`.
         test_data_extra: Extra runtime data for tests.
         test_tags: Tags applied to unit + integration test targets.
             Typically used to disable the sandbox, but see https://bazel.build/reference/be/common-definitions#common.tags
@@ -232,7 +243,7 @@ def codex_rust_crate(
             # `../codex-rs/<crate>/...` paths for `file!()`. Strip either
             # prefix so the workspace-root launcher sees Cargo-like metadata
             # such as `tui/src/...`.
-            rustc_flags = rustc_flags_extra + WINDOWS_GNULLVM_RUSTC_STACK_FLAGS + [
+            rustc_flags = rustc_flags_extra + WINDOWS_RUSTC_LINK_FLAGS + [
                 "--remap-path-prefix=../codex-rs=",
                 "--remap-path-prefix=codex-rs=",
             ],
@@ -264,7 +275,7 @@ def codex_rust_crate(
             crate_root = main,
             deps = all_crate_deps() + maybe_deps + deps_extra,
             edition = crate_edition,
-            rustc_flags = rustc_flags_extra + WINDOWS_GNULLVM_RUSTC_STACK_FLAGS,
+            rustc_flags = rustc_flags_extra + WINDOWS_RUSTC_LINK_FLAGS,
             srcs = native.glob(["src/**/*.rs"]),
             visibility = ["//visibility:public"],
         )
@@ -273,6 +284,12 @@ def codex_rust_crate(
         sanitized_binaries.append(binary_label)
         binary = Label(binary_label).name
         cargo_env["CARGO_BIN_EXE_" + binary] = "$(rlocationpath %s)" % binary_label
+
+    integration_test_kwargs = {}
+    if integration_test_args:
+        integration_test_kwargs["args"] = integration_test_args
+    if integration_test_timeout:
+        integration_test_kwargs["timeout"] = integration_test_timeout
 
     for test in native.glob(["tests/*.rs"], allow_empty = True):
         test_file_stem = test.removeprefix("tests/").removesuffix(".rs")
@@ -292,7 +309,7 @@ def codex_rust_crate(
             # Bazel has emitted both `codex-rs/<crate>/...` and
             # `../codex-rs/<crate>/...` paths for `file!()`. Strip either
             # prefix so Insta records Cargo-like metadata such as `core/tests/...`.
-            rustc_flags = rustc_flags_extra + WINDOWS_GNULLVM_RUSTC_STACK_FLAGS + [
+            rustc_flags = rustc_flags_extra + WINDOWS_RUSTC_LINK_FLAGS + [
                 "--remap-path-prefix=../codex-rs=",
                 "--remap-path-prefix=codex-rs=",
             ],
@@ -302,4 +319,5 @@ def codex_rust_crate(
             # execute from the repo root and can misplace integration snapshots.
             env = cargo_env,
             tags = test_tags,
+            **integration_test_kwargs
         )

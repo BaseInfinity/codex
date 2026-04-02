@@ -197,7 +197,7 @@ $lines | Select-Object -Skip 1 | Set-Content -Path tokens.txt
 "#,
             )?;
             (
-                "powershell".to_string(),
+                "powershell.exe".to_string(),
                 vec![
                     "-NoProfile".to_string(),
                     "-ExecutionPolicy".to_string(),
@@ -219,8 +219,8 @@ $lines | Select-Object -Skip 1 | Set-Content -Path tokens.txt
         ModelProviderAuthInfo {
             command: self.command.clone(),
             args: self.args.clone(),
-            timeout_ms: non_zero_u64(/*value*/ 1_000),
-            refresh_interval_ms: 60_000,
+            timeout_ms: non_zero_u64(/*value*/ 10_000),
+            refresh_interval_ms: non_zero_u64(/*value*/ 60_000),
             cwd: match codex_utils_absolute_path::AbsolutePathBuf::try_from(self.tempdir.path()) {
                 Ok(cwd) => cwd,
                 Err(err) => panic!("tempdir should be absolute: {err}"),
@@ -234,6 +234,24 @@ fn non_zero_u64(value: u64) -> NonZeroU64 {
         Some(value) => value,
         None => panic!("expected non-zero value: {value}"),
     }
+}
+
+fn existing_auth_env_var() -> (&'static str, String) {
+    let candidates = if cfg!(windows) {
+        &["USERNAME", "USERPROFILE", "PATH"][..]
+    } else {
+        &["USER", "HOME", "PATH"][..]
+    };
+
+    for key in candidates {
+        if let Ok(value) = std::env::var(key)
+            && !value.is_empty()
+        {
+            return (key, value);
+        }
+    }
+
+    panic!("expected at least one auth env var from {candidates:?}");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -2594,7 +2612,7 @@ async fn incomplete_response_emits_content_filter_error_message() -> anyhow::Res
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn azure_overrides_assign_properties_used_for_responses_url() {
     skip_if_no_network!();
-    let existing_env_var_with_random_value = if cfg!(windows) { "USERNAME" } else { "USER" };
+    let (existing_env_var_with_random_value, expected_auth_token) = existing_auth_env_var();
 
     // Mock server
     let server = MockServer::start().await;
@@ -2612,13 +2630,9 @@ async fn azure_overrides_assign_properties_used_for_responses_url() {
         .and(path("/openai/responses"))
         .and(query_param("api-version", "2025-04-01-preview"))
         .and(header_regex("Custom-Header", "Value"))
-        .and(header_regex(
+        .and(header(
             "Authorization",
-            format!(
-                "Bearer {}",
-                std::env::var(existing_env_var_with_random_value).unwrap()
-            )
-            .as_str(),
+            format!("Bearer {expected_auth_token}"),
         ))
         .respond_with(first)
         .expect(1)
@@ -2680,7 +2694,7 @@ async fn azure_overrides_assign_properties_used_for_responses_url() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn env_var_overrides_loaded_auth() {
     skip_if_no_network!();
-    let existing_env_var_with_random_value = if cfg!(windows) { "USERNAME" } else { "USER" };
+    let (existing_env_var_with_random_value, expected_auth_token) = existing_auth_env_var();
 
     // Mock server
     let server = MockServer::start().await;
@@ -2698,13 +2712,9 @@ async fn env_var_overrides_loaded_auth() {
         .and(path("/openai/responses"))
         .and(query_param("api-version", "2025-04-01-preview"))
         .and(header_regex("Custom-Header", "Value"))
-        .and(header_regex(
+        .and(header(
             "Authorization",
-            format!(
-                "Bearer {}",
-                std::env::var(existing_env_var_with_random_value).unwrap()
-            )
-            .as_str(),
+            format!("Bearer {expected_auth_token}"),
         ))
         .respond_with(first)
         .expect(1)
