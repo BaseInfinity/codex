@@ -37,6 +37,9 @@
 //! - subprocess integration tests under `tests/` cover real client construction through
 //!   [`build_reqwest_client_for_subprocess_tests`], which disables reqwest proxy autodetection so
 //!   the tests can observe custom-CA success and failure directly
+//! - a macOS-only subprocess regression test separately exercises the production client builder
+//!   under `sandbox-exec` with `com.apple.SystemConfiguration.configd` denied so the system proxy
+//!   crash stays covered too
 //! - those subprocess tests also scrub inherited CA environment variables before launch so their
 //!   result depends only on the test fixtures and env vars set by the test itself
 
